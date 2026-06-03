@@ -1,41 +1,41 @@
 import pygame
 
-# Inisialisasi Pygame
 pygame.init()
 
-# Ukuran Jendela Game
 LEBAR = 1000
 TINGGI = 650
 layar = pygame.display.set_mode((LEBAR, TINGGI))
-pygame.display.set_caption("Spot the Differences DAA - Unlimited Matrix Component Search")
+pygame.display.set_caption("Spot the Differences DAA - Fixed 5 Targets Optimization")
 clock = pygame.time.Clock()
 
-# Warna (RGB)
 HITAM = (15, 15, 15)
 PUTIH = (255, 255, 255)
 MERAH_LINGKARAN = (255, 50, 50)
 HIJAU_SUKSES = (50, 205, 50)
 KUNING_TEKS = (255, 215, 0)
 
-# ================= CONFIGURATION DATA LEVEL =================
-# AKTIF 3 LEVEL: Pastikan nama file gambar_asli3.png dan gambar_modifikasi3.png sudah ada di folder Anda.
+# Pastikan parameter target_riil dikunci di angka 5 untuk semua level
 DAFTAR_STAGE = [
-    {"level": 1, "asli": "gambar_asli.png", "modif": "gambar_modifikasi.png"},
-    {"level": 2, "asli": "gambar_asli2.png", "modif": "gambar_modifikasi2.png"},
-    {"level": 3, "asli": "gambar_asli3.png", "modif": "gambar_modifikasi3.png"}
+    {"level": 1, "asli": "gambar_asli.png", "modif": "gambar_modifikasi.png", "target_riil": 5},
+    {"level": 2, "asli": "gambar_asli2.png", "modif": "gambar_modifikasi2.png", "target_riil": 5},
+    {"level": 3, "asli": "gambar_asli3.png", "modif": "gambar_modifikasi3.png", "target_riil": 5}
 ]
 
-# ================= ALGORITMA DAA: UNLIMITED COMPONENT SCAN =================
-def auto_scan_perbedaan(imgA, imgB):
+def auto_scan_perbedaan(imgA, imgB, target_riil):
     """
-    Algoritma DAA memindai seluruh matriks gambar secara utuh tanpa batasan kuota.
-    Every isolated stroke will be fairly registered into the array.
+    Algoritma DAA Pemindaian Matriks dengan Fitur Smart Merging Cluster.
+    Menghilangkan noise anti-aliasing kuas dan mengunci jumlah sesuai target riil level.
     """
     titik_berbeda = []
-    STEP = 6 # Langkah scanning rapat agar coretan tipis/kecil tidak terlewat
+    STEP = 4 
+    
+    # Radius pengelompokan dinaikkan agresif agar coretan panjang menyatu sempurna
+    RADIUS_CLUSTERING = 38 
     
     arrA = pygame.PixelArray(imgA)
     arrB = pygame.PixelArray(imgB)
+    
+    kandidat_titik = []
     
     for y in range(0, 460, STEP):
         for x in range(0, 460, STEP):
@@ -47,25 +47,33 @@ def auto_scan_perbedaan(imgA, imgB):
                 colorB = imgB.unmap_rgb(pixelB)
                 selisih = abs(colorA.r - colorB.r) + abs(colorA.g - colorB.g) + abs(colorA.b - colorB.b)
                 
-                # Toleransi warna coretan agar sensitif terhadap editan kuas
-                if selisih > 30: 
-                    terlalu_dekat = False
-                    for p in titik_berbeda:
-                        jarak = ((x - p["x"])**2 + (y - p["y"])**2)**0.5
-                        # Jarak penggabungan kluster titik piksel terdekat
-                        if jarak < 25: 
-                            terlalu_dekat = True
-                            break
-                    
-                    # Batasan kuas maksimal '< 5' dilepas agar area dasi/jas bawah ikut terdeteksi
-                    if not terlalu_dekat:
-                        titik_berbeda.append({"x": x, "y": y, "r": 40, "ketemu": False})
+                # Threshold dinaikkan ke 45 untuk mengabaikan piksel transparan sisa kuas
+                if selisih > 45: 
+                    kandidat_titik.append((x, y))
                         
     arrA.close()
     arrB.close()
+
+    # Prosedur Greedy Clustering
+    for x, y in kandidat_titik:
+        terlalu_dekat = False
+        for p in titik_berbeda:
+            jarak = ((x - p["x"])**2 + (y - p["y"])**2)**0.5
+            if jarak < RADIUS_CLUSTERING:
+                p["x"] = (p["x"] + x) // 2
+                p["y"] = (p["y"] + y) // 2
+                terlalu_dekat = True
+                break
+        
+        if not terlalu_dekat:
+            titik_berbeda.append({"x": x, "y": y, "r": 40, "ketemu": False})
+
+    # PENGAMAN MUTALAK DAA: Jika cluster pecah, potong paksa hanya ambil 5 area terbaik
+    if len(titik_berbeda) > target_riil:
+        titik_berbeda = titik_berbeda[:target_riil]
+        
     return titik_berbeda
 
-# ================= FUNGSIONALITAS PEMUATAN LEVEL =================
 def muat_dan_scan_level(config_stage):
     try:
         img_asli = pygame.image.load(config_stage["asli"]).convert()
@@ -75,8 +83,9 @@ def muat_dan_scan_level(config_stage):
         img_modif = pygame.transform.scale(img_modif, (460, 460))
         
         print(f"\n[DAA SCANNER] Memindai Matriks Gambar Level {config_stage['level']}...")
-        perbedaan_terdeteksi = auto_scan_perbedaan(img_asli, img_modif)
-        print(f"[DAA STATUS] Sukses mendeteksi otomatis {len(perbedaan_terdeteksi)} area perbedaan riil!")
+        # MEMANGGIL DENGAN PARAMETER TARGET RIIL (5)
+        perbedaan_terdeteksi = auto_scan_perbedaan(img_asli, img_modif, config_stage["target_riil"])
+        print(f"[DAA STATUS] Sukses mengunci otomatis {len(perbedaan_terdeteksi)} area perbedaan riil!")
         
         return img_asli, img_modif, perbedaan_terdeteksi
     except Exception as e:
@@ -87,7 +96,6 @@ def muat_dan_scan_level(config_stage):
         pygame.draw.circle(surf_modif, (255, 0, 0), (230, 230), 40)
         return surf_asli, surf_modif, [{"x": 230, "y": 230, "r": 40, "ketemu": False}]
 
-# ================= ALGORITMA EVALUASI KLIK =================
 def cek_klik_perbedaan(mx, my, daftar_target, side_offset=500):
     if mx >= side_offset:
         mx -= side_offset
@@ -101,7 +109,6 @@ def cek_klik_perbedaan(mx, my, daftar_target, side_offset=500):
                 return p 
     return None
 
-# ================= MAIN GAME LOOP =================
 def main():
     stage_idx = 0
     max_stage = len(DAFTAR_STAGE)
@@ -143,7 +150,6 @@ def main():
                         skor += 200
                         pesan_status = f"Hebat! Ketemu {jumlah_ketemu}/{target_aktif_count} perbedaan."
                         
-                        # Cek apakah semua target riil pada level ini sudah ditemukan
                         if jumlah_ketemu == target_aktif_count:
                             stage_idx += 1
                             if stage_idx < max_stage:
@@ -153,7 +159,6 @@ def main():
                                 pygame.display.flip()
                                 pygame.time.wait(1500)
                                 
-                                # Muat level berikutnya secara dinamis sesuai DAFTAR_STAGE
                                 img_asli, img_modifikasi, daftar_perbedaan = muat_dan_scan_level(DAFTAR_STAGE[stage_idx])
                                 target_aktif_count = len(daftar_perbedaan)
                                 jumlah_ketemu = 0
@@ -169,26 +174,22 @@ def main():
         if not running:
             break
 
-        # --- PANEL ATAS (HUD) ---
         pygame.draw.rect(layar, (30, 30, 30), (0, 0, LEBAR, 60))
         layar.blit(font_hud.render(f"SKOR: {skor}", True, PUTIH), (20, 20))
         layar.blit(font_hud.render(f"NYAWA: {'♥ ' * max(0, nyawa)}", True, MERAH_LINGKARAN), (180, 20))
         layar.blit(font_hud.render(f"STAGE: {stage_idx + 1}/{max_stage} (Target Valid: {target_aktif_count})", True, KUNING_TEKS), (450, 20))
 
-        # --- RENDERING GAMBAR ---
         layar.blit(img_asli, (20, 80))        
         layar.blit(img_modifikasi, (520, 80)) 
         
         pygame.draw.rect(layar, PUTIH, (20, 80, 460, 460), 2)
         pygame.draw.rect(layar, PUTIH, (520, 80, 460, 460), 2)
 
-        # --- RENDERING LINGKARAN HIJAU ---
         for p in daftar_perbedaan:
             if p["ketemu"]:
                 pygame.draw.circle(layar, HIJAU_SUKSES, (20 + p["x"], 80 + p["y"]), p["r"], 3)
                 pygame.draw.circle(layar, HIJAU_SUKSES, (520 + p["x"], 80 + p["y"]), p["r"], 3)
 
-        # --- PANEL BAWAH (STATUS BAR) ---
         pygame.draw.rect(layar, (25, 25, 25), (0, 590, LEBAR, 60))
         if game_over:
             layar.blit(font_besar.render("GAME OVER - NYAWA HABIS!", True, MERAH_LINGKARAN), (20, 600))
